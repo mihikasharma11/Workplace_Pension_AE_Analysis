@@ -1,0 +1,210 @@
+---
+title: "Pension AE Project 02"
+output: html_notebook
+---
+
+```{r}
+knitr::opts_knit$set(root.dir = "/Users/mihika/Desktop/independent proj/scripts")
+```
+
+# Step 1: Laying groundwork
+
+## Step 1a: Loading packages
+
+```{r}
+library(dplyr)
+library(ggplot2)
+```
+
+## Step 1b: Loading tidy data back in
+
+```{r}
+# age participation
+age_participation <- read.csv("~/Desktop/independent proj/data/processed/age_participation.csv")
+
+glimpse(age_participation)
+
+# gender participation
+gender_participation <- read.csv("~/Desktop/independent proj/data/processed/gender_participation.csv")
+
+# stopping rates
+stopping_rates <- read.csv("~/Desktop/independent proj/data/processed/stopping_rates.csv")
+```
+
+# Step 2: Basic line plots
+
+## Step 2a: Age group
+
+```{r}
+age_participation %>%
+  filter(sector == "Overall") %>%
+  ggplot(aes(x = year, y = participation_rate, color = age_group)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Workplace pension participation by age group (2009-2025)",
+    x = "Year",
+    y = "Participation rate",
+    color = "Age group"
+  )
+```
+
+## Step 2b: Gender
+
+```{r}
+gender_participation %>%
+  filter(sector == "Overall") %>%
+  ggplot(aes(x = year, y = participation_rate, color = gender)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Workplace pension participation by gender (2009-2025)",
+    x = "Year",
+    y = "Participation rate",
+    color = "Gender"
+  )
+```
+
+## Step 2c: Stopping rates
+
+```{r}
+stopping_rates %>%
+  filter(section == "Overall") %>%
+  ggplot(aes(x = quarter_index, y = stopping_rate)) +
+  geom_line(linewidth = 1, color = "darkred") +
+  labs(
+    title = "Stopping saving (opt-out) rate among AE-eligible employees",
+    x = "Quarter (1 = 2014-15 Q1, 47 = 2025-26 Q3)",
+    y = "Stopping saving rate"
+  )
+```
+
+# Step 3: Advanced line plots
+
+## Step 3a: Breaking stop rate down by age band
+
+```{r}
+stopping_rates %>%
+  filter(section == "By Age Band") %>%
+  ggplot(aes(x = quarter_index, y = stopping_rate, color = group)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Stopping saving rate by age band",
+    x = "Quarter (1 = 2014-15 Q1, 47 = 2025-26 Q3)",
+    y = "Stopping saving rate",
+    color = "Age band"
+  )
+```
+
+## Step 3b: Breaking stop rate down by gender
+
+```{r}
+stopping_rates %>%
+  filter(section == "By Gender") %>%
+  ggplot(aes(x = quarter_index, y = stopping_rate, color = group)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Stopping saving rate by gender",
+    x = "Quarter (1 = 2014-15 Q1, 47 = 2025-26 Q3)",
+    y = "Stopping saving rate",
+    color = "Gender"
+  )
+```
+
+## Step 3c: Breaking stop rate down by earnings
+
+```{r}
+stopping_rates %>%
+  filter(section == "By Earnings Band") %>%
+  ggplot(aes(x = quarter_index, y = stopping_rate, color = group)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Stopping saving rate by earnings band",
+    x = "Quarter (1 = 2014-15 Q1, 47 = 2025-26 Q3)",
+    y = "Stopping saving rate",
+    color = "Earnings band"
+  )
+```
+
+# Step 4: Interrupted time series analysis (ITS)
+
+## Step 4a: Building a clean yearly series to test on
+
+```{r}
+overall_trend <- age_participation %>%
+  filter(sector == "Overall") %>%
+  group_by(year) %>%
+  summarise(participation_rate = mean(participation_rate))
+
+print(overall_trend)
+```
+
+## Step 4b: Creating policy variables
+
+```{r}
+overall_trend <- overall_trend %>%
+  mutate(
+    post = if_else(year >= 2012, 1, 0),
+    year_centered = year - 2012
+  )
+
+print(overall_trend)
+```
+
+## Step 4c: Fitting the segmented regression
+
+```{r}
+its_model <- lm(participation_rate ~ year_centered * post, data = overall_trend)
+
+summary(its_model)
+```
+
+# Step 5: Stopping-rate data
+
+## Step 5a: Building a policy variable for the cost-of-living period
+
+```{r}
+# using quarter 29 as the cutoff
+overall_stopping <- stopping_rates %>%
+  filter(section == "Overall") %>%
+  mutate(
+    quarter_centered = quarter_index - 29,
+    post_col = if_else(quarter_index >= 29, 1, 0)
+  )
+
+print(overall_stopping)
+```
+
+## Step 5b: Fitting the segmented regression on stopping rates
+
+```{r}
+its_stopping_model <- lm(stopping_rate ~ quarter_centered * post_col, data = overall_stopping)
+
+summary(its_stopping_model)
+```
+
+# Step 6: Age-band stopping data
+
+## Step 6a: Building age-band stopping data with same policy variables
+
+```{r}
+age_stopping <- stopping_rates %>%
+  filter(section == "By Age Band") %>%
+  mutate(
+    quarter_centered = quarter_index - 29,
+    post_col = if_else(quarter_index >= 29, 1, 0)
+  )
+
+print(age_stopping)
+```
+
+## Step 6b: Fitting a model that lets the effect differ by age band
+
+```{r}
+age_stopping_model <- lm(
+  stopping_rate ~ quarter_centered * post_col * group,
+  data = age_stopping
+)
+
+summary(age_stopping_model)
+```
+
+

@@ -1,0 +1,262 @@
+---
+title: "Pension AE Project 01"
+output: html_notebook
+---
+
+# Step 1: Packages
+
+## Step 1a: Installing necessary packages 
+
+```{r}
+
+install.packages("readxl")
+install.packages("dplyr")
+install.packages("tidyr")
+install.packages("stringr")
+```
+
+## Step 1b: Loading necessary packages
+
+```{r}
+library(readxl)
+library(rlang)
+library(dplyr)
+library(tidyr)
+library(stringr)
+```
+
+# Step 2: Listing sheets in workbook
+
+```{r}
+raw_path <- "~/Desktop/independent proj/data/raw/workplace-pension-participation-2009-2025.xlsx"
+
+excel_sheets(raw_path)
+```
+# Step 3: Looking at sheet 1.4
+
+## Step 3a: Age group participation
+
+```{r}
+preview <- read_excel(raw_path, sheet = "1.4", col_names = FALSE, n_max = 12)
+print(preview)
+```
+
+## Step 3b: Zooming into the first table of sheet 1.4 (percentage of eligible employees participating)
+
+```{r}
+preview2 <- read_excel(raw_path, sheet = "1.4", col_names = FALSE, n_max = 40)
+preview2 <- preview2[, 1:18]
+print(preview2, n = 40)
+```
+
+## Step 3c: Confirming year header row
+
+```{r}
+header_row <- read_excel(raw_path, sheet = "1.4", range = "B8:R8", col_names = FALSE)
+print(header_row)
+```
+## Step 3d: Reading public sector block
+
+```{r}
+public_block <- read_excel(raw_path, sheet = "1.4", range = "A9:R17", col_names = FALSE)
+names(public_block) <- c("age_group", as.character(2009:2025))
+
+print(public_block)
+```
+
+## Step 3e: Reading private and overall blocks similarly
+
+```{r}
+# Private
+private_block <- read_excel(raw_path, sheet = "1.4", range = "A19:R27", col_names = FALSE)
+names(private_block) <- c("age_group", as.character(2009:2025))
+
+print(private_block)
+
+# Overall
+overall_block <- read_excel(raw_path, sheet = "1.4", range = "A29:R37", col_names = FALSE)
+names(overall_block) <- c("age_group", as.character(2009:2025))
+
+print(overall_block)
+```
+
+## Step 3f: Tagging each block with its sector + stacking as one table
+
+```{r}
+public_block <- public_block %>% mutate(sector = "Public")
+private_block <- private_block %>% mutate(sector = "Private")
+overall_block <- overall_block %>% mutate(sector = "Overall")
+
+age_wide <- bind_rows(public_block, private_block, overall_block)
+
+print(age_wide)
+```
+
+## Step 3g: Reorganising table
+
+```{r}
+age_long <- age_wide %>%
+  pivot_longer(
+    cols = `2009`:`2025`,
+    names_to = "year",
+    values_to = "participation_rate"
+  )
+
+print(age_long)
+```
+
+## Step 3h: Data type check
+
+```{r}
+age_long <- age_long %>%
+  mutate(year = as.integer(year))
+
+glimpse(age_long)
+```
+
+## Step 3i: Saving age dataset
+
+```{r}
+write.csv(age_long, "/Users/mihika/Desktop/independent proj/data/processed/age_participation.csv", row.names = FALSE)
+```
+
+## Step 3j: Saving as a clean dataset 
+
+```{r}
+knitr::opts_knit$set(root.dir = "/Users/mihika/Desktop/independent proj/scripts")
+```
+
+# Step 4: Looking at sheet 1.5
+
+## Step 4a: Reading all three sector blocks for gender
+
+```{r}
+gender_public <- read_excel(raw_path, sheet = "1.5", range = "A9:R10", col_names = FALSE)
+names(gender_public) <- c("gender", as.character(2009:2025))
+
+gender_private <- read_excel(raw_path, sheet = "1.5", range = "A12:R13", col_names = FALSE)
+names(gender_private) <- c("gender", as.character(2009:2025))
+
+gender_overall <- read_excel(raw_path, sheet = "1.5", range = "A15:R16", col_names = FALSE)
+names(gender_overall) <- c("gender", as.character(2009:2025))
+```
+
+## Step 4b: Tagging with sector, stack and reshape
+
+```{r}
+gender_wide <- bind_rows(
+  gender_public %>% mutate(sector = "Public"),
+  gender_private %>% mutate(sector = "Private"),
+  gender_overall %>% mutate(sector = "Overall")
+)
+
+gender_long <- gender_wide %>%
+  pivot_longer(
+    cols = `2009`:`2025`,
+    names_to = "year",
+    values_to = "participation_rate"
+  ) %>%
+  mutate(year = as.integer(year))
+
+glimpse(gender_long)
+```
+
+## Step 4c: Saving gender dataset
+
+```{r}
+write.csv(gender_long, "/Users/mihika/Desktop/independent proj/data/processed/gender_participation.csv", row.names = FALSE)
+```
+
+# Step 5: Looking at stopping saving rates
+
+## Step 5a: Viewing sheet structure
+
+```{r}
+stopping_preview <- read_excel(raw_path, sheet = "3.1b", col_names = FALSE, n_max = 26)
+stopping_preview <- stopping_preview[, 1:10]
+print(stopping_preview, n = 26)
+```
+
+## Step 5b: Reading sheet + determining number of quarter columns
+
+```{r}
+stopping_raw <- read_excel(raw_path, sheet = "3.1b", range = "A8:BA25", col_names = FALSE)
+dim(stopping_raw)
+```
+
+## Step 5c: Determining where real quarter columns end
+
+```{r}
+header_row <- stopping_raw[1, ]
+quarter_labels <- header_row[!is.na(header_row)]
+length(quarter_labels)
+print(quarter_labels)
+```
+
+## Step 5d: Naming columns and dropping header row
+
+```{r}
+names(stopping_raw) <- c("category", quarter_labels, rep("drop", ncol(stopping_raw) - 1 - length(quarter_labels)))
+
+stopping_data <- stopping_raw[-1, ]
+stopping_data <- stopping_data[, c("category", quarter_labels)]
+
+print(stopping_data, n = 20)
+```
+
+## Step 5e: Converting quarter columns from text to numbers
+
+```{r}
+stopping_data <- stopping_data %>%
+  mutate(across(all_of(quarter_labels), as.numeric))
+
+glimpse(stopping_data[, 1:4])
+```
+
+## Step 5f: Tagging rows with their section
+
+```{r}
+section_labels <- c("By Age Band", "By Gender", "By Earnings Band")
+
+stopping_data <- stopping_data %>%
+  mutate(section = case_when(
+    category == "All" ~ "Overall",
+    category %in% section_labels ~ category,
+    TRUE ~ NA_character_
+  )) %>%
+  fill(section, .direction = "down") %>%
+  filter(!category %in% section_labels)
+
+stopping_data %>% select(category, section) %>% print(n = 17)
+```
+
+## Step 5g: Pivoting to long format + parsing the quarter labels
+
+```{r}
+stopping_long <- stopping_data %>%
+  pivot_longer(
+    cols = all_of(quarter_labels),
+    names_to = "quarter",
+    values_to = "stopping_rate"
+  ) %>%
+  mutate(
+    financial_year = str_extract(quarter, "^[0-9]{4}-[0-9]{2}"),
+    qtr = str_extract(quarter, "Q[0-9]$")
+  ) %>%
+  rename(group = category)
+
+glimpse(stopping_long)
+```
+
+## Step 5h: Adding a sortable quarter index + saving
+
+```{r}
+stopping_long <- stopping_long %>%
+  mutate(quarter_index = match(quarter, quarter_labels))
+
+write.csv(stopping_long, "/Users/mihika/Desktop/independent proj/data/processed/stopping_rates.csv", row.names = FALSE)
+```
+
+
+
+
